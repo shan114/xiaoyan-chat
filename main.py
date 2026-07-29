@@ -105,12 +105,10 @@ def build_system_prompt(persona: str, rag_context: str = "") -> str:
 {tool_descriptions}
 
 最终回复必须是纯 JSON 格式（不要用 markdown 代码块包裹），包含：
-- reply: 你的回复文本（可包含 [emoji:hug] 等标记）
+- reply: 你的回复文本
 - emotion: 用户情绪 (neutral/happy/sad/angry)
 - action: 额外动作 ("pat" 或 "none")
-如果你觉得有人情绪低落，请设置 action 为 "pat" 并在 reply 中安慰。
-你可以通过 [emoji:名称] 发送表情，可用：hug,laugh,cry,love,ok,think。
-"""
+如果你觉得有人情绪低落，请设置 action 为 "pat" 并在 reply 中安慰。"""
 
 
 # ===================== 数据库 =====================
@@ -581,13 +579,30 @@ def _register_mcp_tools():
 # ===================== 核心推理函数 =====================
 def _parse_ai_json(content: str) -> dict:
     text = content.strip()
-    m = re.match(r'^```(?:json)?\s*\n(.*?)\n```\s*$', text, re.DOTALL)
+    # 尝试提取 markdown 代码块中或混杂的 JSON
+    m = re.search(r'```(?:json)?\s*\n?(.*?)\n?```', text, re.DOTALL)
     if m:
         text = m.group(1).strip()
+    # 用花括号定位 JSON 对象
+    start = text.find('{')
+    end = text.rfind('}')
+    if start != -1 and end != -1 and end > start:
+        text = text[start:end+1]
     try:
         return json.loads(text)
     except json.JSONDecodeError:
         return {"reply": content, "emotion": "neutral", "action": "none"}
+
+
+def _clean_reply(text: str) -> str:
+    """清洗 AI 回复：移除损坏的表情标记和图片标签"""
+    # 去除 [emoji:xxx] 标记
+    text = re.sub(r'\[emoji:\w+\]', '', text)
+    # 去除 <img ...> 标签
+    text = re.sub(r'<img\s+[^>]*/?>', '', text)
+    # 压缩多余空白
+    text = re.sub(r'\s{2,}', ' ', text).strip()
+    return text
 
 
 def run_agent_with_tools(user_input: str, room_id: str = "default",
@@ -621,8 +636,9 @@ def run_agent_with_tools(user_input: str, room_id: str = "default",
         if not assistant_msg.tool_calls:
             content = assistant_msg.content or ""
             result = _parse_ai_json(content)
-            save_message("user", user_input, room_id=room_id, user_name=user_name)
-            save_message("assistant", result.get("reply", ""), room_id=room_id)
+            reply = _clean_reply(result.get("reply", ""))
+            result["reply"] = reply
+            save_message("assistant", reply, room_id=room_id)
             return result
 
         messages.append({
@@ -651,7 +667,6 @@ def run_agent_with_tools(user_input: str, room_id: str = "default",
         assistant_msg = response.choices[0].message
 
     content = assistant_msg.content or "小言有点累了，晚点再聊哦~"
-    save_message("user", user_input, room_id=room_id, user_name=user_name)
     save_message("assistant", content, room_id=room_id)
     return {"reply": content, "emotion": "neutral", "action": "none"}
 
@@ -696,8 +711,9 @@ def run_agent_with_rag(user_input: str, room_id: str = "default",
         if not assistant_msg.tool_calls:
             content = assistant_msg.content or ""
             result = _parse_ai_json(content)
-            save_message("user", user_input, room_id=room_id, user_name=user_name)
-            save_message("assistant", result.get("reply", ""), room_id=room_id)
+            reply = _clean_reply(result.get("reply", ""))
+            result["reply"] = reply
+            save_message("assistant", reply, room_id=room_id)
             return result
 
         messages.append({
@@ -723,7 +739,6 @@ def run_agent_with_rag(user_input: str, room_id: str = "default",
         assistant_msg = response.choices[0].message
 
     content = assistant_msg.content or "小言有点累了，晚点再聊哦~"
-    save_message("user", user_input, room_id=room_id, user_name=user_name)
     save_message("assistant", content, room_id=room_id)
     return {"reply": content, "emotion": "neutral", "action": "none"}
 

@@ -311,8 +311,6 @@ if "persona" not in st.session_state:
     st.session_state["persona"] = None
 if "use_rag" not in st.session_state:
     st.session_state["use_rag"] = True
-if "last_refresh" not in st.session_state:
-    st.session_state["last_refresh"] = time.time()
 if "show_menu" not in st.session_state:
     st.session_state["show_menu"] = False
 if "show_join_modal" not in st.session_state:
@@ -325,26 +323,13 @@ if "show_settings" not in st.session_state:
 ROOM_ID = st.session_state["room_id"]
 USER_NAME = st.session_state["user_name"]
 
-# ===================== 表情 =====================
-EMOJI_MAP = {
-    "hug": "emojis/hug.gif", "laugh": "emojis/laugh.gif",
-    "cry": "emojis/cry.gif", "love": "emojis/love.gif",
-    "ok": "emojis/ok.gif", "think": "emojis/think.gif",
-}
-
+# ===================== 清洗回复（移除不存在的表情/图片标签） =====================
 def render_content(text):
-    parts = re.split(r'(\[emoji:(\w+)\])', text)
-    result = []
-    for part in parts:
-        if part.startswith("[emoji:"):
-            name = part[7:-1]
-            if name in EMOJI_MAP:
-                result.append(f'<img src="{EMOJI_MAP[name]}" width="48" style="vertical-align:middle;">')
-            else:
-                result.append(part)
-        else:
-            result.append(part)
-    return "".join(result)
+    """清理 AI 回复中不应出现的标记（[emoji:*] / <img> 等）"""
+    text = re.sub(r'\[emoji:\w+\]', '', text)
+    text = re.sub(r'<img\s+[^>]*/?>', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'\s{2,}', ' ', text).strip()
+    return text
 
 def show_pat_animation():
     return '<div class="pat-hand">🤚</div><div style="font-size:13px;color:var(--secondary);margin-top:4px;">小言轻轻拍了拍你~</div>'
@@ -500,7 +485,8 @@ if st.session_state["show_settings"]:
         c3, c4 = st.columns(2)
         with c3:
             if st.button("🗑️ 清空聊天", use_container_width=True):
-                conn = sqlite3.connect("chat_history.db")
+                from main import DB_NAME
+                conn = sqlite3.connect(DB_NAME)
                 conn.execute("DELETE FROM messages WHERE room_id = ?", (ROOM_ID,))
                 conn.commit()
                 conn.close()
@@ -547,12 +533,8 @@ for msg in history:
 
 st.markdown('</div>', unsafe_allow_html=True)
 
-# 自动刷新逻辑
-elapsed = time.time() - st.session_state["last_refresh"]
-if elapsed >= 3:
-    st.session_state["last_refresh"] = time.time()
-    time.sleep(0.3)
-    st.rerun()
+# 实时对话模式：不再自动刷新。消息发送后通过 st.rerun() 即时更新。
+# 如需同步其他设备的消息，手动点击顶部 🔄 按钮刷新即可。
 
 
 # ===================== 底部固定输入栏 =====================
@@ -608,18 +590,21 @@ if prompt := st.chat_input(chat_ph):
 
         # AI 回复
         with st.spinner("小言思考中..."):
-            persona = st.session_state.get("persona") or DEFAULT_PERSONA
-            if st.session_state["use_rag"]:
-                result = run_agent_with_rag(
-                    prompt, room_id=ROOM_ID, user_name=USER_NAME, persona=persona
-                )
-            else:
-                result = run_agent_with_tools(
-                    prompt, room_id=ROOM_ID, user_name=USER_NAME, persona=persona
-                )
-
-        reply = result.get("reply", "小言走神了...")
-        action = result.get("action", "none")
+            try:
+                persona = st.session_state.get("persona") or DEFAULT_PERSONA
+                if st.session_state["use_rag"]:
+                    result = run_agent_with_rag(
+                        prompt, room_id=ROOM_ID, user_name=USER_NAME, persona=persona
+                    )
+                else:
+                    result = run_agent_with_tools(
+                        prompt, room_id=ROOM_ID, user_name=USER_NAME, persona=persona
+                    )
+                reply = result.get("reply", "小言走神了...")
+                action = result.get("action", "none")
+            except Exception as e:
+                reply = f"小言出了点问题... ({type(e).__name__}: {e})"
+                action = "none"
 
         st.markdown(f"""
         <div class="chat-sender">🤖 小言</div>
@@ -632,11 +617,7 @@ if prompt := st.chat_input(chat_ph):
         st.rerun()
 
 
-# ===================== 底部提示条 =====================
-# 显示自动刷新倒计时（不占用太多空间）
-remaining = max(0, 3 - (time.time() - st.session_state["last_refresh"]))
-if remaining > 0:
-    st.caption(f"⏱️ {remaining:.0f}秒后自动刷新...")
+# ===================== 实时对话 - 无需自动刷新 =====================
 
 # 通过 JS 实现剪贴板复制（手机端 pyperclip 不可用）
 components.html(f"""
