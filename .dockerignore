@@ -1,0 +1,12 @@
+__pycache__
+*.pyc
+*.pyo
+.git
+.gitignore
+chroma_db
+chat_history.db
+*.bat
+cf_tunnel.exe
+.vscode
+.idea
+*.md

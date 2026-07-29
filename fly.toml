@@ -1,0 +1,49 @@
+app = "xiaoyan-chat"
+primary_region = "sin"   # 新加坡，离中国最近的 Fly.io 边缘节点
+
+[build]
+
+[env]
+  PORT = "8501"
+
+# === 免费版配置（256MB）===
+[[vm]]
+  memory = "256mb"
+  cpu_kind = "shared"
+  cpus = 1
+
+# === 如果 256MB 出现 OOM，取消注释下面两行升级到 512MB（~$1.94/月）===
+# [[vm]]
+#   memory = "512mb"
+#   cpu_kind = "shared"
+#   cpus = 1
+
+[[services]]
+  protocol = "tcp"
+  internal_port = 8501
+  auto_stop_machines = false        # 禁止自动休眠
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[services.ports]]
+    port = 443
+    handlers = ["http"]
+    force_https = true
+
+  [[services.ports]]
+    port = 80
+    handlers = ["http"]
+    force_https = true
+
+  [[services.http_checks]]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "60s"
+    method = "get"
+    path = "/"
+
+# 持久化卷（保存聊天记录 + 知识库 + 模型缓存）
+[mounts]
+  source = "xiaoyan_data"
+  destination = "/data"
+  initial_size = "3gb"

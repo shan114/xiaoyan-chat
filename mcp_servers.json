@@ -1,0 +1,11 @@
+{
+    "mcpServers": {
+        "fetch": {
+            "command": "npx",
+            "args": ["-y", "@modelcontextprotocol/server-fetch"],
+            "description": "获取网页内容，用于抓取和分析网页信息",
+            "env": {}
+        }
+    },
+    "_instructions": "要添加更多 MCP Server，在此文件中按相同格式追加。启动时自动连接并注册所有工具。推荐：\n  - brave-search: 需要 Brave API Key\n  - sequential-thinking: 复杂推理\n  - github: GitHub 操作\n  - puppeteer: 浏览器自动化\n更多: https://github.com/modelcontextprotocol/servers"
+}
